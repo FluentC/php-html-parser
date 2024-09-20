@@ -1,4 +1,4 @@
-PHP Html Parser
+FluentC PHP Html Parser
 ==========================
 
 [![Build Status](https://travis-ci.org/paquettg/php-html-parser.png)](https://travis-ci.org/paquettg/php-html-parser)
