@@ -39,6 +39,19 @@ abstract class ArrayNode extends AbstractNode implements IteratorAggregate, Coun
     }
 
     /**
+ * Sets whether HTML special characters should be decoded.
+ */
+public function setHtmlSpecialCharsDecode($htmlSpecialCharsDecode = false): void
+{
+    $this->htmlSpecialCharsDecode = (bool)$htmlSpecialCharsDecode;
+    
+    // Propagate the setting to all children
+    foreach ($this->children as $child) {
+        $child['node']->setHtmlSpecialCharsDecode($htmlSpecialCharsDecode);
+    }
+}
+
+    /**
      * Returns the array to be used the the iterator.
      */
     abstract protected function getIteratorArray(): array;

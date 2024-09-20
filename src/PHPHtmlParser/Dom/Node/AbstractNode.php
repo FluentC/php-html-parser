@@ -142,6 +142,7 @@ abstract class AbstractNode
         $this->htmlSpecialCharsDecode = $htmlSpecialCharsDecode;
     }
 
+    
     /**
      * Returns the id of this object.
      */

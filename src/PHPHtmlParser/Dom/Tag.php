@@ -159,20 +159,32 @@ class Tag
     }
 
     /**
-     * Set an attribute for this tag.
+     * Sets the attribute to the given value.
+     *
+     * @param string $key
+     * @param string|bool|null $attributeValue
+     * @param bool $doubleQuote
+     * @return Tag
      */
-    public function setAttribute(string $key, ?string $attributeValue, bool $doubleQuote = true): Tag
+    public function setAttribute(string $key, $attributeValue, bool $doubleQuote = true): Tag
     {
-        $attributeDTO = AttributeDTO::makeFromPrimitives(
-            $attributeValue,
-            $doubleQuote
-        );
+        // Handle boolean attributes
+        if ($attributeValue === true) {
+            $attributeDTO = AttributeDTO::makeFromPrimitives($key, $doubleQuote);
+        } elseif ($attributeValue === false) {
+            // If the attribute is explicitly set to false, we don't add it
+            return $this;
+        } else {
+            $attributeDTO = AttributeDTO::makeFromPrimitives($attributeValue, $doubleQuote);
+        }
+
         if ($this->HtmlSpecialCharsDecode) {
             $attributeDTO->htmlspecialcharsDecode();
         }
+
         $this->attr[\strtolower($key)] = $attributeDTO;
 
-        return clone $this;
+        return $this;
     }
 
     /**
@@ -282,35 +294,81 @@ class Tag
         return $return;
     }
 
-    /**
-     * Returns an attribute by the key.
-     *
-     * @throws AttributeNotFoundException
-     * @throws \stringEncode\Exception
-     */
-    public function getAttribute(string $key): AttributeDTO
-    {
-        $key = \strtolower($key);
-        if (!isset($this->attr[$key])) {
-            throw new AttributeNotFoundException('Attribute with key "' . $key . '" not found.');
-        }
-        $attributeDTO = $this->attr[$key];
-        if (!\is_null($this->encode)) {
-            // convert charset
-            $attributeDTO->encodeValue($this->encode);
-        }
-
-        return $attributeDTO;
+   /**
+ * Returns an attribute by the key.
+ *
+ * @throws AttributeNotFoundException
+ * @throws \stringEncode\Exception
+ */
+public function getAttribute(string $key): AttributeDTO
+{
+    $key = \strtolower($key);
+    if (!isset($this->attr[$key])) {
+        throw new AttributeNotFoundException('Attribute with key "' . $key . '" not found.');
     }
+    $attributeDTO = $this->attr[$key];
+    if (!\is_null($this->encode)) {
+        // convert charset
+        $attributeDTO->encodeValue($this->encode);
+    }
+
+    // Ensure the value is always a string
+    $value = $attributeDTO->getValue();
+    if (!is_null($value) && !is_string($value)) {
+        // Create a new AttributeDTO with the string value
+        return AttributeDTO::makeFromPrimitives((string)$value, $attributeDTO->isDoubleQuote());
+    }
+
+    return $attributeDTO;
+}
+/**
+ * Returns all data attributes.
+ *
+ * @return array<string, string>
+ */
+public function getDataAttributes(): array
+{
+    $dataAttributes = [];
+    foreach ($this->attr as $key => $attributeDTO) {
+        if (is_string($key) && strpos($key, 'data-') === 0) {
+            $dataKey = substr($key, 5);
+            if ($dataKey !== false) {
+                $value = $attributeDTO->getValue();
+                $dataAttributes[$dataKey] = $value !== null ? (string)$value : '';
+            }
+        }
+    }
+    return $dataAttributes;
+}
+
+
+   /**
+ * Checks if the attribute is a boolean attribute.
+ *
+ * @param string $key
+ * @return bool
+ */
+private function isBooleanAttribute(string $key): bool
+{
+    $booleanAttributes = [
+        'allowfullscreen', 'allowpaymentrequest', 'async', 'autofocus',
+        'autoplay', 'checked', 'controls', 'default', 'defer', 'disabled',
+        'formnovalidate', 'hidden', 'ismap', 'itemscope', 'loop', 'multiple',
+        'muted', 'nomodule', 'novalidate', 'open', 'readonly', 'required',
+        'reversed', 'selected', 'typemustmatch'
+    ];
+
+    return in_array(strtolower($key), $booleanAttributes);
+}
 
     /**
      * Returns TRUE if node has attribute.
      *
      * @return bool
      */
-    public function hasAttribute(string $key)
+    public function hasAttribute(string $key): bool
     {
-        return isset($this->attr[$key]);
+        return isset($this->attr[\strtolower($key)]);
     }
 
     /**
@@ -321,7 +379,7 @@ class Tag
     public function makeOpeningTag()
     {
         $return = $this->opening . $this->name;
-
+    
         // add the attributes
         foreach (\array_keys($this->attr) as $key) {
             try {
@@ -330,10 +388,14 @@ class Tag
                 // attribute that was in the array not found in the array... let's continue.
                 continue;
             } catch (\TypeError $e) {
-              $val = null;
+                $val = null;
             }
             $val = $attributeDTO->getValue();
-            if (\is_null($val)) {
+            
+            // Handle boolean attributes
+            if ($this->isBooleanAttribute($key) && ($val === '' || $val === $key)) {
+                $return .= ' ' . $key;
+            } elseif (\is_null($val)) {
                 $return .= ' ' . $key;
             } elseif ($attributeDTO->isDoubleQuote()) {
                 $return .= ' ' . $key . '="' . $val . '"';
@@ -341,11 +403,11 @@ class Tag
                 $return .= ' ' . $key . '=\'' . $val . '\'';
             }
         }
-
+    
         if ($this->selfClosing && $this->trailingSlash) {
             return $return . $this->closing;
         }
-
+    
         return $return . '>';
     }
 

@@ -1,7 +1,5 @@
 <?php
-/**
- * Modified by FluentC
- */
+
 declare(strict_types=1);
 
 namespace PHPHtmlParser\Dom\Node;
@@ -66,6 +64,7 @@ class TextNode extends LeafNode
         parent::__construct();
     }
 
+    
     /**
      * @param bool $htmlSpecialCharsDecode
      */
@@ -80,28 +79,40 @@ class TextNode extends LeafNode
      */
     public function text(): string
     {
+        if ($this->tag->name() !== 'text') {
+            $text = '';
+            $relevantAttributes = ['value', 'placeholder', 'title', 'alt', 'aria-label'];
+            foreach ($relevantAttributes as $attr) {
+                $attrValue = $this->tag->getAttribute($attr);
+                if ($attrValue !== null) {
+                    $text .= $attrValue->getValue() . ' ';
+                }
+            }
+            // Add the actual text content
+            $text .= $this->text;
+            return trim($text);
+        }
+
+        // Original text() method for regular text nodes
         if ($this->htmlSpecialCharsDecode) {
             $text = \htmlspecialchars_decode($this->text);
         } else {
             $text = $this->text;
         }
-        // convert charset
+
+        // Convert charset if needed
         if (!\is_null($this->encode)) {
             if (!\is_null($this->convertedText)) {
-                // we already know the converted value
                 return $this->convertedText;
             }
             $text = $this->encode->convert($text);
-
-            // remember the conversion
             $this->convertedText = $text;
-
-            return $text;
         }
 
         return $text;
     }
 
+   
     /**
      * Sets the text for this node.
      *
@@ -109,13 +120,25 @@ class TextNode extends LeafNode
      */
     public function setText(string $text): void
     {
-        $this->text = $text;
-        if (!\is_null($this->encode)) {
-            $text = $this->encode->convert($text);
-
-            // remember the conversion
-            $this->convertedText = $text;
+        if ($this->tag->name() !== 'text') {
+            $relevantAttributes = ['value', 'placeholder', 'title', 'alt', 'aria-label'];
+            $parts = explode(' ', $text, count($relevantAttributes) + 1);
+            foreach ($relevantAttributes as $index => $attr) {
+                if (isset($parts[$index])) {
+                    $this->tag->setAttribute($attr, $parts[$index]);
+                }
+            }
+            // Set remaining text as content
+            $this->text = implode(' ', array_slice($parts, count($relevantAttributes)));
+        } else {
+            $this->text = $text;
         }
+
+        if (!\is_null($this->encode)) {
+            $encodedText = $this->encode->convert($text);
+            $this->convertedText = $encodedText;
+        }
+    
     }
 
     /**
@@ -154,4 +177,18 @@ class TextNode extends LeafNode
     {
         $this->convertedText = null;
     }
+
+     /**
+ * Get all data-* attributes of the node.
+ */
+public function getDataAttributes(): array
+{
+    $dataAttributes = [];
+    foreach ($this->tag->getAttributes() as $key => $value) {
+        if (is_string($key) && strpos($key, 'data-') === 0) {
+            $dataAttributes[$key] = $value->getValue();
+        }
+    }
+    return $dataAttributes;
+}
 }

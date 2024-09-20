@@ -7,6 +7,7 @@ namespace PHPHtmlParser\Dom\Node;
 use PHPHtmlParser\Dom\Tag;
 use PHPHtmlParser\Exceptions\ChildNotFoundException;
 use PHPHtmlParser\Exceptions\UnknownChildTypeException;
+use PHPHtmlParser\Exceptions\Tag\AttributeNotFoundException;
 
 /**
  * Class HtmlNode.
@@ -20,42 +21,23 @@ use PHPHtmlParser\Exceptions\UnknownChildTypeException;
  */
 class HtmlNode extends InnerNode
 {
-    /**
-     * Remembers what the innerHtml was if it was scanned previously.
-     *
-     * @var ?string
-     */
-    protected $innerHtml;
+    protected ?string $innerHtml = null;
+    protected ?string $outerHtml = null;
+    protected ?string $innerText = null;
+    protected ?string $text = null;
+    protected ?string $textWithChildren = null;
+  
+    private $html5Elements = [
+        'article', 'aside', 'audio', 'bdi', 'canvas', 'data', 'datalist',
+        'details', 'figcaption', 'figure', 'footer', 'header', 'main',
+        'mark', 'meter', 'nav', 'output', 'picture', 'progress', 'section',
+        'summary', 'template', 'time', 'video'
+    ];
 
-    /**
-     * Remembers what the outerHtml was if it was scanned previously.
-     *
-     * @var ?string
-     */
-    protected $outerHtml;
-
-    /**
-     * Remembers what the innerText was if it was scanned previously.
-     *
-     * @var ?string
-     */
-    protected $innerText;
-
-    /**
-     * Remembers what the text was if it was scanned previously.
-     *
-     * @var ?string
-     */
-    protected $text;
-
-    /**
-     * Remembers what the text was when we looked into all our
-     * children nodes.
-     *
-     * @var ?string
-     */
-    protected $textWithChildren;
-
+    private $html5InputTypes = [
+        'color', 'date', 'datetime-local', 'email', 'month', 'number', 'range',
+        'search', 'tel', 'time', 'url', 'week'
+    ];
     /**
      * Sets up the tag of this node.
      *
@@ -70,13 +52,15 @@ class HtmlNode extends InnerNode
         parent::__construct();
     }
 
-    /**
-     * @param bool $htmlSpecialCharsDecode
-     */
     public function setHtmlSpecialCharsDecode($htmlSpecialCharsDecode = false): void
     {
         parent::setHtmlSpecialCharsDecode($htmlSpecialCharsDecode);
         $this->tag->setHtmlSpecialCharsDecode($htmlSpecialCharsDecode);
+    }
+
+    public function isHtml5Element(): bool
+    {
+        return in_array(strtolower($this->tag->name()), $this->html5Elements);
     }
 
     /**
@@ -88,19 +72,16 @@ class HtmlNode extends InnerNode
     public function innerHtml(): string
     {
         if (!$this->hasChildren()) {
-            // no children
             return '';
         }
 
         if ($this->innerHtml !== null) {
-            // we already know the result.
             return $this->innerHtml;
         }
 
-        $child = $this->firstChild();
         $string = '';
+        $child = $this->firstChild();
 
-        // continue to loop until we are out of children
         while ($child !== null) {
             if ($child instanceof TextNode) {
                 $string .= $child->text();
@@ -113,15 +94,11 @@ class HtmlNode extends InnerNode
             try {
                 $child = $this->nextChild($child->id());
             } catch (ChildNotFoundException $e) {
-                // no more children
-                unset($e);
                 $child = null;
             }
         }
 
-        // remember the results
         $this->innerHtml = $string;
-
         return $string;
     }
 
@@ -133,7 +110,7 @@ class HtmlNode extends InnerNode
      */
     public function innerText(): string
     {
-        if (\is_null($this->innerText)) {
+        if ($this->innerText === null) {
             $this->innerText = \strip_tags($this->innerHtml());
         }
 
@@ -141,39 +118,32 @@ class HtmlNode extends InnerNode
     }
 
     /**
-     * Gets the html of this node, including it's own
-     * tag.
+     * Gets the html of this node, including its own tag.
      *
      * @throws ChildNotFoundException
      * @throws UnknownChildTypeException
      */
     public function outerHtml(): string
     {
-        // special handling for root
         if ($this->tag->name() == 'root') {
             return $this->innerHtml();
         }
 
         if ($this->outerHtml !== null) {
-            // we already know the results.
             return $this->outerHtml;
         }
 
         $return = $this->tag->makeOpeningTag();
-        if ($this->tag->isSelfClosing()) {
-            // ignore any children... there should not be any though
+        if ($this->tag->isSelfClosing() || $this->isHtml5InputType()) {
+            // For HTML5 elements, we'll always use the self-closing syntax without a trailing slash
+            $return = rtrim($return, '/>') . '>';
             return $return;
         }
 
-        // get the inner html
         $return .= $this->innerHtml();
-
-        // add closing tag
         $return .= $this->tag->makeClosingTag();
 
-        // remember the results
         $this->outerHtml = $return;
-
         return $return;
     }
 
@@ -185,30 +155,23 @@ class HtmlNode extends InnerNode
     {
         if ($lookInChildren) {
             if ($this->textWithChildren !== null) {
-                // we already know the results.
                 return $this->textWithChildren;
             }
         } elseif ($this->text !== null) {
-            // we already know the results.
             return $this->text;
         }
 
-        // find out if this node has any text children
         $text = '';
         foreach ($this->children as $child) {
             /** @var AbstractNode $node */
             $node = $child['node'];
             if ($node instanceof TextNode) {
                 $text .= $child['node']->text;
-            } elseif (
-                $lookInChildren &&
-                $node instanceof HtmlNode
-            ) {
+            } elseif ($lookInChildren && $node instanceof HtmlNode) {
                 $text .= $node->text($lookInChildren);
             }
         }
 
-        // remember our result
         if ($lookInChildren) {
             $this->textWithChildren = $text;
         } else {
@@ -241,4 +204,72 @@ class HtmlNode extends InnerNode
     {
         return $this->getChildren();
     }
+
+    public function isHtml5InputType(): bool
+    {
+        if (strtolower($this->tag->name()) !== 'input') {
+            return false;
+        }
+
+        $typeAttribute = $this->tag->getAttribute('type');
+        if ($typeAttribute === null) {
+            return false;
+        }
+
+        $type = $typeAttribute->getValue();
+        return in_array(strtolower($type), $this->html5InputTypes);
+    }
+
+  /**
+ * Gets the value of a data attribute or all data attributes.
+ * @throws AttributeNotFoundException
+ * @param string|null $name The name of the data attribute (without 'data-' prefix), or null to get all data attributes
+ * @return string|array<string, string>|null The value of the specified data attribute, all data attributes as an array, or null if not found
+ */
+public function getData(?string $name = null): string|array|null
+{
+    if ($name === null) {
+        return $this->tag->getDataAttributes();
+    }
+
+    try {
+        $attribute = $this->tag->getAttribute('data-' . $name);
+        return $attribute->getValue();
+    } catch (AttributeNotFoundException $e) {
+        return null;
+    }
+}
+
+   /**
+ * Sets an attribute on this node.
+ *
+ * @param string $key
+ * @param string|bool|null $value
+ * @param bool $doubleQuote
+ * @return HtmlNode
+ */
+public function setAttribute(string $key, $value, bool $doubleQuote = true): HtmlNode
+{
+    // Handle boolean attributes
+    if (is_bool($value)) {
+        if ($value === true) {
+            $value = $key; // Set the value to the key name for true boolean attributes
+        } else {
+            // If the value is false, we remove the attribute
+            $this->tag->removeAttribute($key);
+            $this->clear();
+            return $this;
+        }
+    }
+
+    // Cast to string if the value is not null (null is handled by Tag::setAttribute)
+    $stringValue = $value !== null ? (string)$value : null;
+
+    $this->tag->setAttribute($key, $stringValue, $doubleQuote);
+
+    // Clear any cache
+    $this->clear();
+
+    return $this;
+}
 }

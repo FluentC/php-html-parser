@@ -158,7 +158,8 @@ class Dom implements DomInterface
 
         $this->root = $this->domParser->parse($localOptions, $this->content, \strlen($str));
         $this->domParser->detectCharset($localOptions, $this->defaultCharset, $this->root);
-
+    
+    
         return $this;
     }
 
@@ -248,4 +249,5 @@ class Dom implements DomInterface
             throw new NotLoadedException('Content is not loaded!');
         }
     }
+
 }
