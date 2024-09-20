@@ -1,5 +1,7 @@
 <?php
-
+/**
+ * Modified by FluentC
+ */
 declare(strict_types=1);
 
 namespace PHPHtmlParser\Dom\Node;
