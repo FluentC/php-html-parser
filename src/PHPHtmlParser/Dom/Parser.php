@@ -187,7 +187,7 @@ class Parser implements ParserInterface
             // comment tag
             $tag = $content->fastForward(3)
                 ->copyByToken(StringToken::CLOSECOMMENT(), true);
-            $tag = (new Tag($tag))
+            $tag = (new Tag('!--' . $tag))
                 ->setOpening('<!--')
                 ->setClosing('-->')
                 ->selfClosing();

@@ -26,6 +26,8 @@ class HtmlNode extends InnerNode
     protected ?string $innerText = null;
     protected ?string $text = null;
     protected ?string $textWithChildren = null;
+
+    protected $isHtml5 = false;
   
     private $html5Elements = [
         'article', 'aside', 'audio', 'bdi', 'canvas', 'data', 'datalist',
@@ -69,6 +71,16 @@ class HtmlNode extends InnerNode
      * @throws ChildNotFoundException
      * @throws UnknownChildTypeException
      */
+    public function setIsHtml5(bool $isHtml5): void
+    {
+        $this->isHtml5 = $isHtml5;
+    }
+
+    public function isHtml5(): bool
+    {
+        return $this->isHtml5;
+    }
+
     public function innerHtml(): string
     {
         if (!$this->hasChildren()) {
@@ -80,9 +92,9 @@ class HtmlNode extends InnerNode
         }
 
         $string = '';
-        $child = $this->firstChild();
+        $children = $this->getChildren();
 
-        while ($child !== null) {
+        foreach ($children as $child) {
             if ($child instanceof TextNode) {
                 $string .= $child->text();
             } elseif ($child instanceof HtmlNode) {
@@ -90,17 +102,16 @@ class HtmlNode extends InnerNode
             } else {
                 throw new UnknownChildTypeException('Unknown child type "' . \get_class($child) . '" found in node');
             }
-
-            try {
-                $child = $this->nextChild($child->id());
-            } catch (ChildNotFoundException $e) {
-                $child = null;
-            }
         }
 
         $this->innerHtml = $string;
         return $string;
     }
+
+public function hasChildren(): bool
+{
+    return !empty($this->children) || ($this instanceof TextNode && !empty($this->text));
+}
 
     /**
      * Gets the inner text of this node.
@@ -125,23 +136,32 @@ class HtmlNode extends InnerNode
      */
     public function outerHtml(): string
     {
-        if ($this->tag->name() == 'root') {
-            return $this->innerHtml();
-        }
-
         if ($this->outerHtml !== null) {
             return $this->outerHtml;
         }
+        
+        if ($this->tag->isComment()) {
+            $this->outerHtml = $this->tag->makeOpeningTag() . $this->tag->makeClosingTag();
+            return $this->outerHtml;
+        }
+
+        // Skip generating tags for the dummy root.
+    if ($this->tag->name() === 'fluentc-root') {
+        return $this->innerHtml();
+    }
 
         $return = $this->tag->makeOpeningTag();
-        if ($this->tag->isSelfClosing() || $this->isHtml5InputType()) {
-            // For HTML5 elements, we'll always use the self-closing syntax without a trailing slash
-            $return = rtrim($return, '/>') . '>';
+
+        if ($this->tag->isSelfClosing()) {
             return $return;
         }
 
         $return .= $this->innerHtml();
-        $return .= $this->tag->makeClosingTag();
+
+        // Add closing tag only for non-self-closing tags
+        if (!$this->tag->isSelfClosing()) {
+            $return .= $this->tag->makeClosingTag();
+        }
 
         $this->outerHtml = $return;
         return $return;
@@ -151,33 +171,24 @@ class HtmlNode extends InnerNode
      * Gets the text of this node (if there is any text). Or get all the text
      * in this node, including children.
      */
-    public function text(bool $lookInChildren = false): string
+    public function text(): string
     {
-        if ($lookInChildren) {
-            if ($this->textWithChildren !== null) {
-                return $this->textWithChildren;
-            }
-        } elseif ($this->text !== null) {
+        if ($this->text !== null) {
             return $this->text;
         }
 
         $text = '';
-        foreach ($this->children as $child) {
-            /** @var AbstractNode $node */
-            $node = $child['node'];
-            if ($node instanceof TextNode) {
-                $text .= $child['node']->text;
-            } elseif ($lookInChildren && $node instanceof HtmlNode) {
-                $text .= $node->text($lookInChildren);
+        $children = $this->getChildren();
+
+        foreach ($children as $child) {
+            if ($child instanceof TextNode) {
+                $text .= $child->text();
+            } elseif ($child instanceof HtmlNode) {
+                $text .= $child->text();
             }
         }
 
-        if ($lookInChildren) {
-            $this->textWithChildren = $text;
-        } else {
-            $this->text = $text;
-        }
-
+        $this->text = $text;
         return $text;
     }
 

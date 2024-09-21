@@ -124,12 +124,18 @@ class Tag
         return clone $this;
     }
 
-    /**
-     * Checks if the tag is self closing.
-     */
+    private $html5VoidElements = [
+        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+        'link', 'meta', 'param', 'source', 'track', 'wbr'
+    ];
+    public function isComment(): bool
+    {
+        return strpos($this->name, '!--') === 0;
+    }
+
     public function isSelfClosing(): bool
     {
-        return $this->selfClosing;
+        return $this->selfClosing || in_array(strtolower($this->name), $this->html5VoidElements);
     }
 
     /**
@@ -166,25 +172,14 @@ class Tag
      * @param bool $doubleQuote
      * @return Tag
      */
-    public function setAttribute(string $key, $attributeValue, bool $doubleQuote = true): Tag
+    public function setAttribute(string $key, $value): void
     {
-        // Handle boolean attributes
-        if ($attributeValue === true) {
-            $attributeDTO = AttributeDTO::makeFromPrimitives($key, $doubleQuote);
-        } elseif ($attributeValue === false) {
-            // If the attribute is explicitly set to false, we don't add it
-            return $this;
+        // Handle data-* attributes
+        if (strpos($key, 'data-') === 0) {
+            $this->attr[$key] = AttributeDTO::makeFromPrimitives($value);
         } else {
-            $attributeDTO = AttributeDTO::makeFromPrimitives($attributeValue, $doubleQuote);
+            $this->attr[strtolower($key)] = AttributeDTO::makeFromPrimitives($value);
         }
-
-        if ($this->HtmlSpecialCharsDecode) {
-            $attributeDTO->htmlspecialcharsDecode();
-        }
-
-        $this->attr[\strtolower($key)] = $attributeDTO;
-
-        return $this;
     }
 
     /**
@@ -376,39 +371,37 @@ private function isBooleanAttribute(string $key): bool
      *
      * @return string
      */
-    public function makeOpeningTag()
-    {
-        $return = $this->opening . $this->name;
     
-        // add the attributes
-        foreach (\array_keys($this->attr) as $key) {
-            try {
-                $attributeDTO = $this->getAttribute($key);
-            } catch (AttributeNotFoundException $e) {
-                // attribute that was in the array not found in the array... let's continue.
-                continue;
-            } catch (\TypeError $e) {
-                $val = null;
-            }
-            $val = $attributeDTO->getValue();
+    public function makeOpeningTag(): string
+    {
+        if ($this->isComment()) {
+            return $this->opening . substr($this->name, 3);
+        }
+
+        $return = '<'.$this->name;
+
+        // handle attributes
+        foreach ($this->attr as $key => $attributeDTO) {
+            $return .= ' '.$key;
             
             // Handle boolean attributes
-            if ($this->isBooleanAttribute($key) && ($val === '' || $val === $key)) {
-                $return .= ' ' . $key;
-            } elseif (\is_null($val)) {
-                $return .= ' ' . $key;
-            } elseif ($attributeDTO->isDoubleQuote()) {
-                $return .= ' ' . $key . '="' . $val . '"';
-            } else {
-                $return .= ' ' . $key . '=\'' . $val . '\'';
+            if ($attributeDTO->getValue() === true) {
+                continue;
+            }
+            
+            if ($attributeDTO->getValue() !== null && $attributeDTO->getValue() !== '') {
+                $return .= '='.$attributeDTO->getOpeningQuote().$attributeDTO->getValue().$attributeDTO->getClosingQuote();
             }
         }
-    
-        if ($this->selfClosing && $this->trailingSlash) {
-            return $return . $this->closing;
+
+        // handle void elements
+        if ($this->isSelfClosing()) {
+            $return .= ' /';
         }
-    
-        return $return . '>';
+
+        $return .= '>';
+
+        return $return;
     }
 
     /**
@@ -418,6 +411,10 @@ private function isBooleanAttribute(string $key): bool
      */
     public function makeClosingTag()
     {
+        if ($this->isComment()) {
+            return $this->closing;
+        }
+        
         if ($this->selfClosing) {
             return '';
         }

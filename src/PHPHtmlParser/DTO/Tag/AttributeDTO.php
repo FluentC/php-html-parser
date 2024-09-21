@@ -43,6 +43,16 @@ final class AttributeDTO
         return $this->doubleQuote;
     }
 
+    public function getOpeningQuote(): string
+    {
+        return $this->doubleQuote ? '"' : "'";
+    }
+
+    public function getClosingQuote(): string
+    {
+        return $this->doubleQuote ? '"' : "'";
+    }
+
     public function htmlspecialcharsDecode(): void
     {
         if (!\is_null($this->value)) {

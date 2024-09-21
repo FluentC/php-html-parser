@@ -353,25 +353,30 @@ abstract class InnerNode extends ArrayNode
         $this->clear();
     }
 
-    /**
-     * Shortcut to return the first child.
-     *
-     * @throws ChildNotFoundException
-     *
-     * @uses $this->getChild()
-     */
-    public function firstChild(): AbstractNode
-    {
-        if (\count($this->children) == 0) {
-            // no children
-            throw new ChildNotFoundException('No children found in node.');
-        }
 
-        \reset($this->children);
-        $key = (int) \key($this->children);
-
-        return $this->getChild($key);
+   /**
+ * Shortcut to return the first child.
+ *
+ * @throws ChildNotFoundException
+ *
+ * @return AbstractNode
+ */
+public function firstChild(): AbstractNode
+{
+    if ($this instanceof TextNode) {
+        return $this;
     }
+
+    if (\count($this->children) == 0) {
+        // no children
+        throw new ChildNotFoundException('No children found in node.');
+    }
+
+    \reset($this->children);
+    $key = (int) \key($this->children);
+
+    return $this->getChild($key);
+}
 
     /**
      * Attempts to get the last child.

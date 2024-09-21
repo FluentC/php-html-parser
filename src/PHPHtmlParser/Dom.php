@@ -22,6 +22,7 @@ use PHPHtmlParser\Exceptions\UnknownChildTypeException;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
+use PHPHtmlParser\Dom\Node\HtmlNode;
 
 /**
  * Class Dom.
@@ -59,6 +60,13 @@ class Dom implements DomInterface
      * @var CleanerInterface
      */
     private $domCleaner;
+
+    private $html5Elements = [
+        'article', 'aside', 'audio', 'bdi', 'canvas', 'data', 'datalist',
+        'details', 'figcaption', 'figure', 'footer', 'header', 'main',
+        'mark', 'meter', 'nav', 'output', 'picture', 'progress', 'section',
+        'summary', 'template', 'time', 'video'
+    ];
 
     public function __construct(?ParserInterface $domParser = null, ?CleanerInterface $domCleaner = null)
     {
@@ -145,22 +153,26 @@ class Dom implements DomInterface
     public function loadStr(string $str, ?Options $options = null): Dom
     {
         $localOptions = new Options();
-        if ($this->globalOptions !== null) {
-            $localOptions = $localOptions->setFromOptions($this->globalOptions);
-        }
-        if ($options !== null) {
-            $localOptions = $localOptions->setFromOptions($options);
-        }
+    if ($this->globalOptions !== null) {
+        $localOptions = $localOptions->setFromOptions($this->globalOptions);
+    }
+    if ($options !== null) {
+        $localOptions = $localOptions->setFromOptions($options);
+    }
 
-        $html = $this->domCleaner->clean($str, $localOptions, $this->defaultCharset);
+    $html = $this->domCleaner->clean($str, $localOptions, $this->defaultCharset);
 
-        $this->content = new Content($html);
+    $this->content = new Content($html);
 
-        $this->root = $this->domParser->parse($localOptions, $this->content, \strlen($str));
-        $this->domParser->detectCharset($localOptions, $this->defaultCharset, $this->root);
-    
-    
-        return $this;
+    // Parse the content
+    $this->root = $this->domParser->parse($localOptions, $this->content, \strlen($str));
+
+    $this->domParser->detectCharset($localOptions, $this->defaultCharset, $this->root);
+
+    // Add support for HTML5 elements
+    $this->addHtml5Support($this->root);
+
+    return $this;
     }
 
     /**
@@ -182,11 +194,20 @@ class Dom implements DomInterface
      * @return mixed|Collection|null
      */
     public function find(string $selector, int $nth = null)
-    {
-        $this->isLoaded();
+{
+    $this->isLoaded();
 
-        return $this->root->find($selector, $nth);
-    }
+    // Add support for HTML5 elements in selectors
+    $selector = $this->expandHtml5Selectors($selector);
+
+    return $this->root->find($selector, $nth);
+}
+
+private function expandHtml5Selectors(string $selector): string
+{
+    $html5Selectors = implode(',', $this->html5Elements);
+    return str_replace('*', "*,$html5Selectors", $selector);
+}
 
     /**
      * Simple wrapper function that returns an element by the
@@ -250,4 +271,17 @@ class Dom implements DomInterface
         }
     }
 
+    private function addHtml5Support($node)
+    {
+        if ($node instanceof Dom\Node\HtmlNode) {
+            $tagName = strtolower($node->getTag()->name());
+            if (in_array($tagName, $this->html5Elements)) {
+                $node->setIsHtml5(true);
+            }
+            
+            foreach ($node->getChildren() as $child) {
+                $this->addHtml5Support($child);
+            }
+        }
+    }
 }

@@ -79,67 +79,70 @@ class TextNode extends LeafNode
      */
     public function text(): string
     {
-        if ($this->tag->name() !== 'text') {
-            $text = '';
-            $relevantAttributes = ['value', 'placeholder', 'title', 'alt', 'aria-label'];
-            foreach ($relevantAttributes as $attr) {
-                $attrValue = $this->tag->getAttribute($attr);
-                if ($attrValue !== null) {
-                    $text .= $attrValue->getValue() . ' ';
-                }
-            }
-            // Add the actual text content
-            $text .= $this->text;
-            return trim($text);
-        }
-
-        // Original text() method for regular text nodes
         if ($this->htmlSpecialCharsDecode) {
             $text = \htmlspecialchars_decode($this->text);
         } else {
             $text = $this->text;
         }
 
-        // Convert charset if needed
+        // Handle HTML5 specific text processing if needed
+        if ($this->parent && $this->parent instanceof HtmlNode && $this->parent->isHtml5()) {
+            // Add any HTML5 specific text processing here if needed
+        }
+
+        // convert charset
         if (!\is_null($this->encode)) {
             if (!\is_null($this->convertedText)) {
                 return $this->convertedText;
             }
             $text = $this->encode->convert($text);
             $this->convertedText = $text;
+            return $text;
         }
 
         return $text;
     }
 
    
-    /**
-     * Sets the text for this node.
-     *
-     * @var string
-     */
-    public function setText(string $text): void
-    {
-        if ($this->tag->name() !== 'text') {
-            $relevantAttributes = ['value', 'placeholder', 'title', 'alt', 'aria-label'];
-            $parts = explode(' ', $text, count($relevantAttributes) + 1);
-            foreach ($relevantAttributes as $index => $attr) {
-                if (isset($parts[$index])) {
-                    $this->tag->setAttribute($attr, $parts[$index]);
-                }
+   /**
+ * Sets the text for this node.
+ *
+ * @param string $text
+ */
+public function setText(string $text): void
+{
+    if ($this->tag->name() !== 'text') {
+        $relevantAttributes = ['value', 'placeholder', 'title', 'alt', 'aria-label'];
+        $parts = explode(' ', $text, count($relevantAttributes) + 1);
+        foreach ($relevantAttributes as $index => $attr) {
+            if (isset($parts[$index])) {
+                $this->tag->setAttribute($attr, $parts[$index]);
             }
-            // Set remaining text as content
-            $this->text = implode(' ', array_slice($parts, count($relevantAttributes)));
-        } else {
-            $this->text = $text;
         }
-
-        if (!\is_null($this->encode)) {
-            $encodedText = $this->encode->convert($text);
-            $this->convertedText = $encodedText;
-        }
-    
+        // Set remaining text as content
+        $this->text = implode(' ', array_slice($parts, count($relevantAttributes)));
+    } else {
+        $this->text = $text;
     }
+
+    // Handle HTML5 specific processing if needed
+    if ($this->parent && $this->parent instanceof HtmlNode && $this->parent->isHtml5()) {
+        // Add any HTML5 specific text processing here if needed
+        // For example, you might want to handle certain HTML5 elements differently
+    }
+
+    // Clear the converted text cache
+    $this->convertedText = null;
+
+    if (!\is_null($this->encode)) {
+        $this->convertedText = $this->encode->convert($this->text);
+    }
+
+    // Clear parent node's cache
+    if ($this->parent) {
+        $this->parent->clear();
+    }
+}
 
     /**
      * This node has no html, just return the text.
@@ -190,5 +193,21 @@ public function getDataAttributes(): array
         }
     }
     return $dataAttributes;
+}
+
+/**
+ * Sets a data attribute for this node.
+ *
+ * @param string $key
+ * @param string $value
+ */
+public function setDataAttribute(string $key, string $value): void
+{
+    $this->tag->setAttribute("data-$key", $value);
+    
+    // Clear parent node's cache
+    if ($this->parent) {
+        $this->parent->clear();
+    }
 }
 }
